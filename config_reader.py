@@ -2,6 +2,13 @@ import copy
 import multiprocessing as mp
 
 
+def jrt_process_configs(arg_parser):
+    args, _ = arg_parser.parse_known_args()
+    # run_args, _run_config, _run_repeat = _yield_configs(arg_parser, args)
+    for run_args, _run_config, _run_repeat in _yield_configs(arg_parser, args):
+        return run_args
+
+
 def process_configs(target, arg_parser):
     args, _ = arg_parser.parse_known_args()
     ctx = mp.get_context('spawn')

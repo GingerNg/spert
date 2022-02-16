@@ -1,10 +1,14 @@
 import argparse
 
 from args import train_argparser, eval_argparser, predict_argparser
-from config_reader import process_configs
+from config_reader import process_configs, jrt_process_configs
 from spert import input_reader
 from spert.spert_trainer import SpERTTrainer
 
+def train():
+    arg_parser = train_argparser()
+    run_args = jrt_process_configs(arg_parser=arg_parser)
+    __train(run_args)
 
 def _train():
     arg_parser = train_argparser()

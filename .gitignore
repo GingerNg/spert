@@ -105,9 +105,18 @@ venv.bak/
 .mypy_cache/
 
 # custom
-data/
+# data/
 tmp/
 .idea/
 runs/
 *.state
 checkpoint
+data/datasets/ade/*
+data/datasets/scierc/*
+data/log/*
+data/datasets/conll04/conll04_dev.json
+data/datasets/conll04/conll04_prediction_example.json
+data/datasets/conll04/conll04_test.json
+data/datasets/conll04/conll04_train_dev.json
+data/datasets/conll04/conll04_train.json
+data/models/*
