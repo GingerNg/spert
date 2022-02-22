@@ -73,7 +73,8 @@ class SpERTTrainer(BaseTrainer):
 
         # create optimizer
         optimizer_params = self._get_optimizer_params(model)
-        optimizer = AdamW(optimizer_params, lr=args.lr, weight_decay=args.weight_decay, correct_bias=False)
+        optimizer = AdamW(optimizer_params, lr=args.lr,
+                          weight_decay=args.weight_decay, correct_bias=False)
         # create scheduler
         scheduler = transformers.get_linear_schedule_with_warmup(optimizer,
                                                                  num_warmup_steps=args.lr_warmup * updates_total,
@@ -81,23 +82,28 @@ class SpERTTrainer(BaseTrainer):
         # create loss function
         rel_criterion = torch.nn.BCEWithLogitsLoss(reduction='none')
         entity_criterion = torch.nn.CrossEntropyLoss(reduction='none')
-        compute_loss = SpERTLoss(rel_criterion, entity_criterion, model, optimizer, scheduler, args.max_grad_norm)
+        compute_loss = SpERTLoss(
+            rel_criterion, entity_criterion, model, optimizer, scheduler, args.max_grad_norm)
 
         # eval validation set
         if args.init_eval:
-            self._eval(model, validation_dataset, input_reader, 0, updates_epoch)
+            self._eval(model, validation_dataset,
+                       input_reader, 0, updates_epoch)
 
         # train
         for epoch in range(args.epochs):
             # train epoch
-            self._train_epoch(model, compute_loss, optimizer, train_dataset, updates_epoch, epoch)
+            self._train_epoch(model, compute_loss, optimizer,
+                              train_dataset, updates_epoch, epoch)
 
             # eval validation sets
             if not args.final_eval or (epoch == args.epochs - 1):
-                self._eval(model, validation_dataset, input_reader, epoch + 1, updates_epoch)
+                self._eval(model, validation_dataset,
+                           input_reader, epoch + 1, updates_epoch)
 
         # save final model
-        extra = dict(epoch=args.epochs, updates_epoch=updates_epoch, epoch_iteration=0)
+        extra = dict(epoch=args.epochs,
+                     updates_epoch=updates_epoch, epoch_iteration=0)
         global_iteration = args.epochs * updates_epoch
         self._save_model(self._save_path, model, self._tokenizer, global_iteration,
                          optimizer=optimizer if self._args.save_optimizer else None, extra=extra,
@@ -150,14 +156,16 @@ class SpERTTrainer(BaseTrainer):
     def _load_model(self, input_reader):
         model_class = models.get_model(self._args.model_type)
 
-        config = BertConfig.from_pretrained(self._args.model_path, cache_dir=self._args.cache_path)
+        config = BertConfig.from_pretrained(
+            self._args.model_path, cache_dir=self._args.cache_path)
         util.check_version(config, model_class, self._args.model_path)
 
         config.spert_version = model_class.VERSION
         model = model_class.from_pretrained(self._args.model_path,
                                             config=config,
                                             # SpERT model parameters
-                                            cls_token=self._tokenizer.convert_tokens_to_ids('[CLS]'),
+                                            cls_token=self._tokenizer.convert_tokens_to_ids(
+                                                '[CLS]'),
                                             relation_types=input_reader.relation_type_count - 1,
                                             entity_types=input_reader.entity_type_count,
                                             max_pairs=self._args.max_pairs,
@@ -183,16 +191,42 @@ class SpERTTrainer(BaseTrainer):
         total = dataset.document_count // self._args.train_batch_size
         for batch in tqdm(data_loader, total=total, desc='Train epoch %s' % epoch):
             model.train()
+            # 定义一个sentence中，任意一个可能的词(由一个token或多个连续的token构成)为chunk，作为候选的entity
+            print("""
+                encoding_shape:{},
+                entity_masks_shape:{},
+                entity_sample_masks_shape:{},
+                entity_sizes_shape:{},
+                entity_types_shape:{}
+                """.format(
+                batch['encodings'].shape,  # [2, 56]
+                batch['entity_masks'].shape, # [2, 105, 56]  (batch_size, num_chunk, seq_len)
+                batch['entity_sample_masks'].shape,  # [2, 105], chunk是否为entity, boolen
+                batch['entity_sizes'].shape,  # [2, 105]  每个chunk的token个数 (batch_size, num_chunk)
+                batch['entity_types'].shape,   # true_entity_label (batch_size, num_chunk)
+            ))
             batch = util.to_device(batch, self._device)
 
             # forward step
-            entity_logits, rel_logits = model(encodings=batch['encodings'], context_masks=batch['context_masks'],
-                                              entity_masks=batch['entity_masks'], entity_sizes=batch['entity_sizes'],
-                                              relations=batch['rels'], rel_masks=batch['rel_masks'])
+            entity_logits, rel_logits = model(encodings=batch['encodings'],
+                                              context_masks=batch['context_masks'],
+                                              entity_masks=batch['entity_masks'],
+                                              entity_sizes=batch['entity_sizes'],
+                                              relations=batch['rels'],
+                                              rel_masks=batch['rel_masks'])
 
+            print("""
+                entity_logits_shape:{},
+                rel_logits_shape:{},
+                """.format(
+                entity_logits.shape,  # (batch_size, num_chunk, num_entity_label(5=4+1))
+                rel_logits.shape, #
+            ))
             # compute loss and optimize parameters
-            batch_loss = compute_loss.compute(entity_logits=entity_logits, rel_logits=rel_logits,
-                                              rel_types=batch['rel_types'], entity_types=batch['entity_types'],
+            batch_loss = compute_loss.compute(entity_logits=entity_logits,
+                                              rel_logits=rel_logits,
+                                              rel_types=batch['rel_types'],
+                                              entity_types=batch['entity_types'],
                                               entity_sample_masks=batch['entity_sample_masks'],
                                               rel_sample_masks=batch['rel_sample_masks'])
 
@@ -201,7 +235,8 @@ class SpERTTrainer(BaseTrainer):
             global_iteration = epoch * updates_epoch + iteration
 
             if global_iteration % self._args.train_log_iter == 0:
-                self._log_train(optimizer, batch_loss, epoch, iteration, global_iteration, dataset.label)
+                self._log_train(optimizer, batch_loss, epoch,
+                                iteration, global_iteration, dataset.label)
 
         return iteration
 
@@ -214,8 +249,10 @@ class SpERTTrainer(BaseTrainer):
             model = model.module
 
         # create evaluator
-        predictions_path = os.path.join(self._log_path, f'predictions_{dataset.label}_epoch_{epoch}.json')
-        examples_path = os.path.join(self._log_path, f'examples_%s_{dataset.label}_epoch_{epoch}.html')
+        predictions_path = os.path.join(
+            self._log_path, f'predictions_{dataset.label}_epoch_{epoch}.json')
+        examples_path = os.path.join(
+            self._log_path, f'examples_%s_{dataset.label}_epoch_{epoch}.html')
         evaluator = Evaluator(dataset, input_reader, self._tokenizer,
                               self._args.rel_filter_threshold, self._args.no_overlapping, predictions_path,
                               examples_path, self._args.example_count)
@@ -229,7 +266,8 @@ class SpERTTrainer(BaseTrainer):
             model.eval()
 
             # iterate batches
-            total = math.ceil(dataset.document_count / self._args.eval_batch_size)
+            total = math.ceil(dataset.document_count /
+                              self._args.eval_batch_size)
             for batch in tqdm(data_loader, total=total, desc='Evaluate epoch %s' % epoch):
                 # move batch to selected device
                 batch = util.to_device(batch, self._device)
@@ -268,7 +306,8 @@ class SpERTTrainer(BaseTrainer):
             model.eval()
 
             # iterate batches
-            total = math.ceil(dataset.document_count / self._args.eval_batch_size)
+            total = math.ceil(dataset.document_count /
+                              self._args.eval_batch_size)
             for batch in tqdm(data_loader, total=total, desc='Predict'):
                 # move batch to selected device
                 batch = util.to_device(batch, self._device)
@@ -289,7 +328,8 @@ class SpERTTrainer(BaseTrainer):
                 pred_entities.extend(batch_pred_entities)
                 pred_relations.extend(batch_pred_relations)
 
-        prediction.store_predictions(dataset.documents, pred_entities, pred_relations, self._args.predictions_path)
+        prediction.store_predictions(
+            dataset.documents, pred_entities, pred_relations, self._args.predictions_path)
 
     def _get_optimizer_params(self, model):
         param_optimizer = list(model.named_parameters())
@@ -315,7 +355,8 @@ class SpERTTrainer(BaseTrainer):
 
         # log to csv
         self._log_csv(label, 'loss', loss, epoch, iteration, global_iteration)
-        self._log_csv(label, 'loss_avg', avg_loss, epoch, iteration, global_iteration)
+        self._log_csv(label, 'loss_avg', avg_loss,
+                      epoch, iteration, global_iteration)
         self._log_csv(label, 'lr', lr, epoch, iteration, global_iteration)
 
     def _log_eval(self, ner_prec_micro: float, ner_rec_micro: float, ner_f1_micro: float,
@@ -329,26 +370,44 @@ class SpERTTrainer(BaseTrainer):
                   epoch: int, iteration: int, global_iteration: int, label: str):
 
         # log to tensorboard
-        self._log_tensorboard(label, 'eval/ner_prec_micro', ner_prec_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/ner_recall_micro', ner_rec_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/ner_f1_micro', ner_f1_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/ner_prec_macro', ner_prec_macro, global_iteration)
-        self._log_tensorboard(label, 'eval/ner_recall_macro', ner_rec_macro, global_iteration)
-        self._log_tensorboard(label, 'eval/ner_f1_macro', ner_f1_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/ner_prec_micro',
+                              ner_prec_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/ner_recall_micro',
+                              ner_rec_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/ner_f1_micro',
+                              ner_f1_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/ner_prec_macro',
+                              ner_prec_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/ner_recall_macro',
+                              ner_rec_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/ner_f1_macro',
+                              ner_f1_macro, global_iteration)
 
-        self._log_tensorboard(label, 'eval/rel_prec_micro', rel_prec_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_recall_micro', rel_rec_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_f1_micro', rel_f1_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_prec_macro', rel_prec_macro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_recall_macro', rel_rec_macro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_f1_macro', rel_f1_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_prec_micro',
+                              rel_prec_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_recall_micro',
+                              rel_rec_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_f1_micro',
+                              rel_f1_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_prec_macro',
+                              rel_prec_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_recall_macro',
+                              rel_rec_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_f1_macro',
+                              rel_f1_macro, global_iteration)
 
-        self._log_tensorboard(label, 'eval/rel_nec_prec_micro', rel_nec_prec_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_nec_recall_micro', rel_nec_rec_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_nec_f1_micro', rel_nec_f1_micro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_nec_prec_macro', rel_nec_prec_macro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_nec_recall_macro', rel_nec_rec_macro, global_iteration)
-        self._log_tensorboard(label, 'eval/rel_nec_f1_macro', rel_nec_f1_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_nec_prec_micro',
+                              rel_nec_prec_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_nec_recall_micro',
+                              rel_nec_rec_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_nec_f1_micro',
+                              rel_nec_f1_micro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_nec_prec_macro',
+                              rel_nec_prec_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_nec_recall_macro',
+                              rel_nec_rec_macro, global_iteration)
+        self._log_tensorboard(label, 'eval/rel_nec_f1_macro',
+                              rel_nec_f1_macro, global_iteration)
 
         # log to csv
         self._log_csv(label, 'eval', ner_prec_micro, ner_rec_micro, ner_f1_micro,
@@ -362,8 +421,10 @@ class SpERTTrainer(BaseTrainer):
                       epoch, iteration, global_iteration)
 
     def _log_datasets(self, input_reader):
-        self._logger.info("Relation type count: %s" % input_reader.relation_type_count)
-        self._logger.info("Entity type count: %s" % input_reader.entity_type_count)
+        self._logger.info("Relation type count: %s" %
+                          input_reader.relation_type_count)
+        self._logger.info("Entity type count: %s" %
+                          input_reader.entity_type_count)
 
         self._logger.info("Entities:")
         for e in input_reader.entity_types.values():
